@@ -3,7 +3,7 @@ name: l4dtoolz
 on:
   push:
     branches:
-      - 'main'
+      - 'maindef31max'
     paths-ignore:
       - '**.md'
 

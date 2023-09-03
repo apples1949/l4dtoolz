@@ -274,6 +274,8 @@ err_sv:
 	((void (*)(void *, int, netadr_s *, const char *, Handler *))net[0][12])(net, 99, &adr, "l4dtoolz", new Handler);
 #endif
 	return true;
+	engine->ServerCommand("sv_setmax 31\n");
+	Msg("[L4DToolZ] maxplayers default set to 31\n");
 }
 
 void l4dtoolz::Unload(){
