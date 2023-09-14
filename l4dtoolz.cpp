@@ -163,7 +163,7 @@ void l4dtoolz::PostAuth(ValidateAuthTicketResponse_t *rsp){
 #else
 void l4dtoolz::PostAuth(void *, ValidateAuthTicketResponse_t *rsp){
 #endif
-	if(rsp->id!=rsp->owner){
+	if(!rsp->code && rsp->id!=rsp->owner){
 		rsp->code = 2;
 		Msg("[L4DToolZ] %llu using family sharing, owner: %llu.\n", rsp->id, rsp->owner);
 	}
