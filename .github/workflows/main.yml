@@ -6,6 +6,11 @@ on:
       - 'maindef31max'
     paths-ignore:
       - '**.md'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+  schedule:
+    - cron: '30 03 01 */3 *'
 
 jobs:
   build_linux:
@@ -20,28 +25,23 @@ jobs:
         sudo apt install gcc-5-multilib g++-5-multilib
         sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-5 100
         sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-5 100
-
     - name: Checkout hl2sdk-l4d2
       uses: actions/checkout@v3
       with:
         repository: lakwsh/hl2sdk-l4d2
         path: hl2sdk-l4d2
-
     - name: Checkout code
       uses: actions/checkout@v3
       with:
         path: l4dtoolz
-
     - name: Build L4DToolZ
       working-directory: l4dtoolz
       run: make all
-
     - name: Upload L4DToolZ
       uses: actions/upload-artifact@v3
       with:
         name: l4dtoolz-${{github.run_id}}
         path: l4dtoolz/Release/l4dtoolz.so
-
 
   build_windows:
     runs-on: windows-2022
@@ -51,51 +51,41 @@ jobs:
       with:
         repository: lakwsh/hl2sdk-l4d2
         path: hl2sdk-l4d2
-
     - name: Checkout code
       uses: actions/checkout@v3
       with:
         path: l4dtoolz
-
     - name: Setup msbuild
       uses: microsoft/setup-msbuild@v1.3
-
     - name: Build hl2sdk
       working-directory: hl2sdk-l4d2
       run: msbuild tier1\tier1-2005.vcxproj /p:Configuration=Release /p:Platform=Win32 -maxcpucount:8
-
     - name: Build L4DToolZ
       working-directory: l4dtoolz
       run: msbuild l4dtoolz.vcxproj /p:Configuration=Release /p:Platform=Win32 -maxcpucount:8
-
     - name: Upload L4DToolZ
       uses: actions/upload-artifact@v3
       with:
         name: l4dtoolz-${{github.run_id}}
         path: l4dtoolz/Release/l4dtoolz.dll
 
-
   upload_files:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
-
     - name: Upload README
       uses: actions/upload-artifact@v3
       with:
         name: l4dtoolz-${{github.run_id}}
         path: README.md
-
     - name: Upload README_EN
       uses: actions/upload-artifact@v3
       with:
         name: l4dtoolz-${{github.run_id}}
         path: README_EN.md
-
     - name: Download vdf
       run: wget https://oss.lakwsh.net/l4dtoolz.vdf
-
     - name: Upload vdf
       uses: actions/upload-artifact@v3
       with:

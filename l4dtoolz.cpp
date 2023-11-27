@@ -8,31 +8,33 @@
 l4dtoolz g_l4dtoolz;
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR(l4dtoolz, IServerPluginCallbacks, INTERFACEVERSION_ISERVERPLUGINCALLBACKS, g_l4dtoolz);
 
-IVEngineServer *engine = NULL;
-ICvar *icvar = NULL;
-uint tickrate = 30;
+static IVEngineServer *g_engine;
+static ICvar *g_cvar;
+static uint g_tickrate = 30;
 
-uint *l4dtoolz::slots_ptr = NULL;
-uint64 *l4dtoolz::cookie_ptr = NULL;
-uint *l4dtoolz::maxcl_ptr = NULL;
-uint *l4dtoolz::gamerules_ptr = NULL;
-void *l4dtoolz::rules_max_ptr = NULL;
-void *l4dtoolz::rules_max_org = NULL;
-void *l4dtoolz::dsp_max_ptr = NULL;
-void *l4dtoolz::dsp_max_org = NULL;
-void *l4dtoolz::lobby_req_ptr = NULL;
-void *l4dtoolz::lobby_req_org = NULL;
-uint *l4dtoolz::steam3_ptr = NULL;
-void *l4dtoolz::authreq_ptr = NULL;
-void *l4dtoolz::authreq_org = NULL;
-uint *l4dtoolz::authrsp_ptr = NULL;
-uint l4dtoolz::authrsp_org = 0;
-uint *l4dtoolz::tickint_ptr = NULL;
-void *l4dtoolz::tickint_org = NULL;
-void *l4dtoolz::set_rate_ptr = NULL;
-void *l4dtoolz::set_rate_org = NULL;
+static int *slots_ptr;
+static uint64 *cookie_ptr;
+static int *maxcl_ptr;
+static uintptr_t *gamerules_ptr;
+static uintptr_t rules_max_ptr;
+static uchar *rules_max_org;
+static uintptr_t dsp_max_ptr;
+static uchar *dsp_max_org;
+static uintptr_t lobby_req_ptr;
+static uchar *lobby_req_org;
+static uintptr_t *steam3_ptr;
+static uintptr_t authreq_ptr;
+static uchar *authreq_org;
+static uintptr_t *authrsp_ptr;
+static uintptr_t authrsp_org;
+static uintptr_t tickint_ptr;
+static uchar *tickint_org;
+static uintptr_t set_rate_ptr;
+static uchar *set_rate_org;
+static uintptr_t **netchan_ptr;
 
-void l4dtoolz::OnChangeMax(IConVar *var, const char *pOldValue, float flOldValue){
+void l4dtoolz::OnChangeMax(IConVar *var, const char *pOldValue, float flOldValue)
+{
 	CHKVAL
 	if(!slots_ptr){
 		var->SetValue(-1);
@@ -45,7 +47,7 @@ void l4dtoolz::OnChangeMax(IConVar *var, const char *pOldValue, float flOldValue
 		return;
 	}
 	*slots_ptr = new_value;
-	max_player_new[3] = (unsigned char)new_value;
+	max_player_new[3] = (uchar)new_value;
 	write_signature(rules_max_ptr, max_player_new);
 	if(!dsp_max_ptr) Msg("[L4DToolZ] sv_maxplayers(dsp) init error\n");
 	else write_signature(dsp_max_ptr, max_player_new);
@@ -53,7 +55,8 @@ void l4dtoolz::OnChangeMax(IConVar *var, const char *pOldValue, float flOldValue
 ConVar sv_maxplayers("sv_maxplayers", "-1", 0, "Max human players", true, -1, true, 31, l4dtoolz::OnChangeMax);
 
 ConVar sv_lobby_cookie("sv_lobby_cookie", "0", 0);
-void l4dtoolz::Cookie_f(const CCommand &args){
+void l4dtoolz::Cookie_f(const CCommand &args)
+{
 	if(!cookie_ptr){
 		Msg("[L4DToolZ] sv_cookie init error\n");
 		return;
@@ -64,17 +67,18 @@ void l4dtoolz::Cookie_f(const CCommand &args){
 		sv_lobby_cookie.SetValue(buf);
 	}
 	if(args.ArgC()!=2){
-		engine->ServerCommand("sv_lobby_cookie\n");
+		g_engine->ServerCommand("sv_lobby_cookie\n");
 		return;
 	}
 	uint64 val = atoll(args[1]);
-	icvar->FindVar("sv_hosting_lobby")->SetValue(val!=0);
-	icvar->FindVar("sv_allow_lobby_connect_only")->SetValue(val!=0);
+	g_cvar->FindVar("sv_hosting_lobby")->SetValue(val!=0);
+	g_cvar->FindVar("sv_allow_lobby_connect_only")->SetValue(val!=0);
 	*cookie_ptr = val;
 }
 ConCommand cookie("sv_cookie", l4dtoolz::Cookie_f, "Lobby reservation cookie");
 
-void l4dtoolz::OnSetMaxCl(IConVar *var, const char *pOldValue, float flOldValue){
+void l4dtoolz::OnSetMaxCl(IConVar *var, const char *pOldValue, float flOldValue)
+{
 	CHKVAL
 	if(!maxcl_ptr){
 		Msg("[L4DToolZ] sv_setmax init error\n");
@@ -85,7 +89,8 @@ void l4dtoolz::OnSetMaxCl(IConVar *var, const char *pOldValue, float flOldValue)
 }
 ConVar sv_setmax("sv_setmax", "18", 0, "Max clients", true, 18, true, 32, l4dtoolz::OnSetMaxCl);
 
-void l4dtoolz::ServerActivate(edict_t *, int, int){
+void l4dtoolz::ServerActivate(edict_t *, int, int)
+{
 	int slots = sv_maxplayers.GetInt();
 	if(slots>=0 && slots_ptr) *slots_ptr = slots;
 	if(rules_max_ptr) return;
@@ -93,22 +98,24 @@ void l4dtoolz::ServerActivate(edict_t *, int, int){
 		Msg("[L4DToolZ] sv_maxplayers(rules) init error\n");
 		return;
 	}
-	rules_max_ptr = ((uint ****)gamerules_ptr)[0][0][info_idx];
+	rules_max_ptr = ((uintptr_t **)*gamerules_ptr)[0][info_idx];
 	read_signature(rules_max_ptr, max_player_new, rules_max_org);
 	if(slots>=0) write_signature(rules_max_ptr, max_player_new);
 }
 
 // Linux: static float GetTickInterval(void *);
-static float GetTickInterval(){
-	static float tickinv = 1.0/tickrate;
+static float GetTickInterval()
+{
+	static float tickinv = 1.0/g_tickrate;
 	return tickinv;
 }
 
 #ifdef WIN32
-static int PreAuth(const void *, int, uint64 steamID){
+static int PreAuth(const void *, int, uint64 steamID)
 #else
-static int PreAuth(void *, const void *, int, uint64 steamID){
+static int PreAuth(void *, const void *, int, uint64 steamID)
 #endif
+{
 	if(!steamID){
 		Msg("[L4DToolZ] invalid steamID.\n");
 		return 1;
@@ -117,7 +124,8 @@ static int PreAuth(void *, const void *, int, uint64 steamID){
 	return 0;
 }
 
-void l4dtoolz::OnBypassAuth(IConVar *var, const char *pOldValue, float flOldValue){
+void l4dtoolz::OnBypassAuth(IConVar *var, const char *pOldValue, float flOldValue)
+{
 	CHKVAL
 	if(!steam3_ptr){
 	err_bypass:
@@ -125,22 +133,23 @@ void l4dtoolz::OnBypassAuth(IConVar *var, const char *pOldValue, float flOldValu
 		Msg("[L4DToolZ] sv_steam_bypass init error\n");
 		return;
 	}
-	unsigned char authreq_new[6] = {0x04, 0x00};
+	uchar authreq_new[6] = {0x04, 0x00};
 	if(!authreq_ptr){
-		auto gsv = (uint **)steam3_ptr[1];
+		auto gsv = (uintptr_t **)steam3_ptr[1];
 		if(!CHKPTR(gsv, 0xf)) goto err_bypass;
-		authreq_ptr = &gsv[0][authreq_idx];
+		authreq_ptr = (uintptr_t)&gsv[0][authreq_idx];
 		read_signature(authreq_ptr, authreq_new, authreq_org);
 	}
-	*(uint *)&authreq_new[2] = (uint)&PreAuth;
+	*(uintptr_t *)&authreq_new[2] = (uintptr_t)&PreAuth;
 	if(new_value) write_signature(authreq_ptr, authreq_new);
 	else write_signature(authreq_ptr, authreq_org);
 }
 ConVar sv_steam_bypass("sv_steam_bypass", "0", 0, "Bypass steam validation", true, 0, true, 1, l4dtoolz::OnBypassAuth);
 
-PLUGIN_RESULT l4dtoolz::ClientConnect(bool *bAllowConnect, edict_t *pEntity, const char *, const char *, char *, int){
+PLUGIN_RESULT l4dtoolz::ClientConnect(bool *bAllowConnect, edict_t *pEntity, const char *, const char *, char *, int)
+{
 	if(sv_steam_bypass.GetInt()!=1) return PLUGIN_CONTINUE;
-	const CSteamID *steamID = engine->GetClientSteamID(pEntity);
+	const CSteamID *steamID = g_engine->GetClientSteamID(pEntity);
 	if(!steamID){
 		Msg("[L4DToolZ] invalid steamID.\n");
 	reject:
@@ -149,20 +158,21 @@ PLUGIN_RESULT l4dtoolz::ClientConnect(bool *bAllowConnect, edict_t *pEntity, con
 	}
 	ValidateAuthTicketResponse_t rsp = {*(uint64 *)steamID};
 #ifdef WIN32
-	((void (__thiscall *)(void *, void *))authrsp_org)(steam3_ptr, &rsp);
+	((void (__thiscall *)(uintptr_t *, void *))authrsp_org)(steam3_ptr, &rsp);
 #else
-	((void (*)(void *, void *))authrsp_org)(steam3_ptr, &rsp);
+	((void (*)(uintptr_t *, void *))authrsp_org)(steam3_ptr, &rsp);
 #endif
-	if(engine->GetPlayerUserId(pEntity)==-1) goto reject;
+	if(g_engine->GetPlayerUserId(pEntity)==-1) goto reject;
 	Msg("[L4DToolZ] %llu validated.\n", rsp.id);
 	return PLUGIN_CONTINUE;
 }
 
 #ifdef WIN32
-void l4dtoolz::PostAuth(ValidateAuthTicketResponse_t *rsp){
+static void PostAuth(ValidateAuthTicketResponse_t *rsp)
 #else
-void l4dtoolz::PostAuth(void *, ValidateAuthTicketResponse_t *rsp){
+static void PostAuth(void *, ValidateAuthTicketResponse_t *rsp)
 #endif
+{
 	if(!rsp->code && rsp->id!=rsp->owner){
 		rsp->code = 2;
 		Msg("[L4DToolZ] %llu using family sharing, owner: %llu.\n", rsp->id, rsp->owner);
@@ -174,28 +184,28 @@ void l4dtoolz::PostAuth(void *, ValidateAuthTicketResponse_t *rsp){
 		jmp authrsp_org
 	}
 #else
-	((void (*)(void *, void *))authrsp_org)(steam3_ptr, rsp);
+	((void (*)(uintptr_t *, void *))authrsp_org)(steam3_ptr, rsp);
 #endif
 }
 
-void l4dtoolz::OnAntiSharing(IConVar *var, const char *pOldValue, float flOldValue){
+void l4dtoolz::OnAntiSharing(IConVar *var, const char *pOldValue, float flOldValue)
+{
 	CHKVAL
 	if(!authrsp_ptr){
 		var->SetValue(0);
 		Msg("[L4DToolZ] sv_anti_sharing init error\n");
 		return;
 	}
-	if(new_value) *authrsp_ptr = (uint)&PostAuth;
+	if(new_value) *authrsp_ptr = (uintptr_t)&PostAuth;
 	else *authrsp_ptr = authrsp_org;
 }
 ConVar sv_anti_sharing("sv_anti_sharing", "0", 0, "No family sharing", true, 0, true, 1, l4dtoolz::OnAntiSharing);
 
 // Linux: static void ReplyReservationRequest(void *, void *, void *);
-static void ReplyReservationRequest(void *, void *){
-	return;
-}
+static void ReplyReservationRequest(void *, void *){ }
 
-void l4dtoolz::OnForceUnreserved(IConVar *var, const char *pOldValue, float flOldValue){
+void l4dtoolz::OnForceUnreserved(IConVar *var, const char *pOldValue, float flOldValue)
+{
 	CHKVAL
 	if(!lobby_req_ptr){
 		var->SetValue(0);
@@ -204,69 +214,72 @@ void l4dtoolz::OnForceUnreserved(IConVar *var, const char *pOldValue, float flOl
 	}
 	if(new_value){
 		write_signature(lobby_req_ptr, lobby_req_new);
-		icvar->FindVar("sv_allow_lobby_connect_only")->SetValue(0);
+		g_cvar->FindVar("sv_allow_lobby_connect_only")->SetValue(0);
 		return;
 	}
 	write_signature(lobby_req_ptr, lobby_req_org);
 }
 ConVar sv_force_unreserved("sv_force_unreserved", "0", 0, "Disallow lobby reservation", true, 0, true, 1, l4dtoolz::OnForceUnreserved);
 
-void l4dtoolz::ConnectionStart(uint ***chan){
+void l4dtoolz::ConnectionStart(uintptr_t **chan)
+{
+	netchan_ptr = chan;
 	set_rate_ptr = chan[0][setrate_idx];
 	read_signature(set_rate_ptr, set_rate_new, set_rate_org);
-	*(uint *)&set_rate_new[3] = tickrate*1000;
+	*(uint *)&set_rate_new[3] = g_tickrate*1000;
 	write_signature(set_rate_ptr, set_rate_new);
-	Msg("[L4DToolZ] tickrate: %d\n", tickrate);
+	Msg("[L4DToolZ] tickrate: %d\n", g_tickrate);
 }
 
-bool l4dtoolz::Load(CreateInterfaceFn interfaceFactory, CreateInterfaceFn gameServerFactory){
-	engine = (IVEngineServer *)interfaceFactory(INTERFACEVERSION_VENGINESERVER, NULL);
-	icvar = (ICvar *)interfaceFactory(CVAR_INTERFACE_VERSION, NULL);
-	tickrate = CommandLine()->ParmValue("-tickrate", 30);
+bool l4dtoolz::Load(CreateInterfaceFn interfaceFactory, CreateInterfaceFn gameServerFactory)
+{
+	g_engine = (IVEngineServer *)interfaceFactory(INTERFACEVERSION_VENGINESERVER, NULL);
+	g_cvar = (ICvar *)interfaceFactory(CVAR_INTERFACE_VERSION, NULL);
+	g_tickrate = (uint)CommandLine()->ParmValue("-tickrate", 30);
 
 	ConnectTier1Libraries(&interfaceFactory, 1);
 	ConVar_Register(0);
 
 	if(!gamerules_ptr){
-		auto client = (uint **)gameServerFactory("ServerGameClients003", NULL);
-		auto gamerules = *(uint **)(client[0][18]+info_off);
+		auto client = (uintptr_t **)gameServerFactory("ServerGameClients003", NULL);
+		auto gamerules = *(uintptr_t **)(client[0][18]+info_off); // mov
 		if(CMPPTR(gamerules, 0x3, gameServerFactory)) gamerules_ptr = gamerules;
 	}
 	if(!slots_ptr){
-		uint **sv = *(uint ***)(((uint **)engine)[0][0x80]+sv_off);
+		auto sv = *(uintptr_t ***)(((uint **)(uintptr_t)g_engine)[0][0x80]+sv_off);
 		if(!CMPPTR(sv, 0xf, interfaceFactory)) goto err_sv;
-		slots_ptr = (uint *)&sv[slots_idx];
+		slots_ptr = (int *)&sv[slots_idx];
 		cookie_ptr = (uint64 *)&sv[cookie_idx];
-		maxcl_ptr = (uint *)&sv[maxcl_idx];
-		auto sfunc = (uint *(*)(void))READCALL(sv[0][steam3_idx]+steam3_off);
+		maxcl_ptr = (int *)&sv[maxcl_idx];
+		auto sfunc = (uintptr_t *(*)(void))(uintptr_t)READCALL(sv[0][steam3_idx]+steam3_off);
 		if(CMPPTR(sfunc, 0xf, interfaceFactory)){
 			steam3_ptr = sfunc(); // conn
 			authrsp_ptr = &steam3_ptr[authrsp_idx];
 			authrsp_org = *authrsp_ptr;
 		}
-		lobby_req_ptr = &sv[0][lobbyreq_idx];
+		lobby_req_ptr = (uintptr_t)&sv[0][lobbyreq_idx];
 		read_signature(lobby_req_ptr, lobby_req_new, lobby_req_org);
-		*(uint *)&lobby_req_new[2] = (uint)&ReplyReservationRequest;
+		*(uintptr_t *)&lobby_req_new[2] = (uintptr_t)&ReplyReservationRequest;
 	}
 err_sv:
 	if(!dsp_max_ptr){
-		auto match = (uint **)interfaceFactory("MATCHFRAMEWORK_001", NULL);
-		auto title = ((uint ***(*)())match[0][8])();
+		auto match = (uintptr_t **)interfaceFactory("MATCHFRAMEWORK_001", NULL);
+		auto title = ((uintptr_t **(*)(void))match[0][8])();
 		dsp_max_ptr = title[0][4];
 		read_signature(dsp_max_ptr, max_player_new, dsp_max_org);
 	}
 
-	if(tickrate==30) return true;
+	if(g_tickrate==30) return true;
 	if(!tickint_ptr){
-		auto game = (uint **)gameServerFactory(INTERFACEVERSION_SERVERGAMEDLL, NULL);
-		tickint_ptr = &game[0][tickint_idx];
-		unsigned char tickint_new[6] = {0x04, 0x00};
+		auto game = (uintptr_t **)gameServerFactory(INTERFACEVERSION_SERVERGAMEDLL, NULL);
+		tickint_ptr = (uintptr_t)&game[0][tickint_idx];
+		uchar tickint_new[6] = {0x04, 0x00};
 		read_signature(tickint_ptr, tickint_new, tickint_org);
-		*(uint *)&tickint_new[2] = (uint)&GetTickInterval;
+		*(uintptr_t *)&tickint_new[2] = (uintptr_t)&GetTickInterval;
 		write_signature(tickint_ptr, tickint_new);
 	}
-	((uint *)icvar->FindVar("net_splitpacket_maxrate"))[15] = false; // m_bHasMax
-	auto net = (uint **)interfaceFactory("INETSUPPORT_001", NULL);
+	((uint *)g_cvar->FindVar("net_splitpacket_maxrate"))[15] = 0; // m_bHasMax
+	auto net = (uintptr_t **)interfaceFactory("INETSUPPORT_001", NULL);
 	netadr_s adr = {3, 0, 0};
 #ifdef WIN32
 	((void (__thiscall *)(void *, int, netadr_s *, const char *, Handler *))net[0][12])(net, 99, &adr, "l4dtoolz", new Handler);
@@ -278,7 +291,8 @@ err_sv:
 	return true;
 }
 
-void l4dtoolz::Unload(){
+void l4dtoolz::Unload()
+{
 	ConVar_Unregister();
 	DisconnectTier1Libraries();
 
@@ -289,4 +303,10 @@ void l4dtoolz::Unload(){
 	free_signature(lobby_req_ptr, lobby_req_org);
 	free_signature(tickint_ptr, tickint_org);
 	free_signature(set_rate_ptr, set_rate_org);
+	if(!netchan_ptr) return;
+#ifdef WIN32
+	((void (__thiscall *)(void *, const char *))netchan_ptr[0][shutdown_idx])((void *)netchan_ptr, "");
+#else
+	((void (*)(void *, const char *))netchan_ptr[0][shutdown_idx])((void *)netchan_ptr, "");
+#endif
 }

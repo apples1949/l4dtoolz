@@ -1,22 +1,26 @@
-#ifndef _INCLUDE_SIGNATURE_
-#define _INCLUDE_SIGNATURE_
+#ifndef SIGNATURE_H
+#define SIGNATURE_H
 
 #ifdef WIN32
 typedef unsigned int uint;
 typedef unsigned long long uint64;
 #endif
+typedef unsigned int uintptr_t;
+typedef unsigned char uchar;
 
 /*
-typedef struct{
+typedef struct {
+	const char *name;
 	void *addr;
-	uint len;
+	size_t len;
 } mem_info;
 
-void *get_func(void *addr, const char *func);
-void find_base_from_list(const char *name[], mem_info *base);
-void *find_signature(const char *mask, mem_info *base, bool pure = false);
+uintptr_t get_func(void *addr, const char *func);
+bool find_base(mem_info *data);
+uintptr_t find_signature(uchar *mask, mem_info *base, bool pure);
 */
-void read_signature(void *addr, const void *new_sign, void *&org_sign);
-void write_signature(void *addr, const void *sign);
-void free_signature(void *addr, void *&sign);
-#endif //_INCLUDE_SIGNATURE_
+void read_signature(uintptr_t addr, uchar *new_sign, uchar *&org_sign);
+void write_signature(uintptr_t addr, uchar *sign);
+void free_signature(uintptr_t addr, uchar *&sign);
+
+#endif // SIGNATURE_H

@@ -9,8 +9,6 @@
 #include <sys/mman.h>
 #include <unistd.h>
 //#include <link.h>
-
-static uint pmask = ~(sysconf(_SC_PAGESIZE)-1);
 #endif
 
 #define HEADER_LEN	2
@@ -18,125 +16,113 @@ static uint pmask = ~(sysconf(_SC_PAGESIZE)-1);
 #define OFF_BYTE	1
 
 /*
-void *get_func(void *addr, const char *func){
+uintptr_t get_func(void *addr, const char *func)
+{
 #ifdef WIN32
-	return (void *)GetProcAddress((HMODULE)addr, func);
+	return (uintptr_t)GetProcAddress((HMODULE)addr, func);
 #else
-	void *result = NULL;
+	uintptr_t ptr = 0;
 	Dl_info info;
 	if(dladdr(addr, &info)){
 		void *handle = dlopen(info.dli_fname, RTLD_NOW);
 		if(handle){
-			result = dlsym(handle, func);
+			ptr = (uintptr_t)dlsym(handle, func);
 			dlclose(handle);
 		}
 	}
-	return result;
+	return ptr;
 #endif
 }
 
 #ifndef WIN32
-typedef struct{
-	const char *name;
-	mem_info *base;
-} v_data;
-
-static int callback(struct dl_phdr_info *info, size_t size, void *data){
-	v_data *d = (v_data *)data;
-	if(!info->dlpi_name || !strstr(info->dlpi_name, d->name)) return 0;
-	d->base->addr = (void *)info->dlpi_addr;
-	d->base->len = info->dlpi_phdr[0].p_filesz; // p_type=1 p_offset=0
+static int callback(struct dl_phdr_info *info, size_t size, void *data)
+{
+	mem_info *d = (mem_info *)data;
+	if(!info->dlpi_name || !strstr(info->dlpi_name, d->name)) return 0; // path
+	d->addr = (void *)info->dlpi_addr;
+	d->len = info->dlpi_phdr[0].p_filesz; // p_type=1 p_offset=0
 	return 1;
 }
 #endif
 
-static bool find_base(const char *name, mem_info *base){
+bool find_base(mem_info *data)
+{
+	base->addr = NULL;
+	base->len = 0;
 #ifdef WIN32
 	HANDLE hModuleSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, 0);
 	if(hModuleSnap==INVALID_HANDLE_VALUE) return false;
-	MODULEENTRY32 me32;
-	me32.dwSize = sizeof(MODULEENTRY32);
+	bool succ = false;
+	MODULEENTRY32 me32 = {sizeof(MODULEENTRY32)};
 	while(Module32Next(hModuleSnap, &me32)){ // srcds
-		if(!strcmp(me32.szModule, name)){
-			base->addr = me32.modBaseAddr;
-			base->len = me32.modBaseSize;
-			CloseHandle(hModuleSnap);
-			return true;
+		if(!strcmp(me32.szModule, data->name)){
+			data->addr = (void *)me32.modBaseAddr;
+			data->len = (size_t)me32.modBaseSize;
+			succ = true;
 		}
 	}
 	CloseHandle(hModuleSnap);
+	return succ;
 #else
-	v_data vdata = {name, base};
-	if(dl_iterate_phdr(callback, &vdata)) return true;
+	return dl_iterate_phdr(callback, (void *)data)==1;
 #endif
-	return false;
 }
 
-void find_base_from_list(const char *name[], mem_info *base){
-	base->addr = NULL;
-	base->len = 0;
-	if(!name) return;
-	int i = 0;
-	while(name[i] && !find_base(name[i], base)) i++;
-}
-
-void *find_signature(const char *mask, mem_info *base, bool pure){
-	if(!base->addr) return NULL;
-	char *pBase = (char *)base->addr;
-	uint len = mask[LEN_BYTE];
-	char *pEnd = pBase+base->len-(int)len;
+uintptr_t find_signature(uchar *mask, mem_info *base, bool pure)
+{
+	if(!base->addr) return 0;
+	uchar *p = (uchar *)base->addr;
+	size_t len = mask[LEN_BYTE];
+	uchar *end = p+(base->len-len);
 #ifndef WIN32
-	char *pa_addr = (char *)((uint)pBase&pmask);
-	uint size = pEnd-pa_addr;
-	mlock(pa_addr, size);
+	mlock(base->addr, base->len);
 #endif
-	while(pBase<pEnd){
-		uint i = 1; // skip len byte
-		for(char *tmp = pBase; i<=len; ++i, ++tmp){
+	uintptr_t ret = 0;
+	while(p<end){
+		uint i = LEN_BYTE+1;
+		for(uchar *tmp = p; i<=len; ++i, ++tmp){
 			if(!pure && mask[i]=='\xC3') continue;
 			if(mask[i]!=*tmp) break;
 		}
 		if(--i==len){
-		#ifndef WIN32
-			munlock(pa_addr, size);
-		#endif
-			return pBase;
+			ret = (uintptr_t)p;
+			break;
 		}
-		pBase++;
+		p++;
 	}
 #ifndef WIN32
-	munlock(pa_addr, size);
+	munlock(base->addr, base->len);
 #endif
-	return NULL;
+	return ret;
 }
 */
 
-void read_signature(void *addr, const void *new_sign, void *&org_sign){
+void read_signature(uintptr_t addr, uchar *new_sign, uchar *&org_sign)
+{
 	if(!addr) return;
-	uint len = ((unsigned char *)new_sign)[LEN_BYTE];
-	org_sign = malloc(len+HEADER_LEN);
+	size_t len = new_sign[LEN_BYTE];
+	org_sign = (uchar *)malloc(len+HEADER_LEN);
 	if(!org_sign) return;
-	memcpy(org_sign, new_sign, HEADER_LEN);
-	void *src = (void *)((uint)addr+((char *)new_sign)[OFF_BYTE]);
-	void *dst = (void *)((uint)org_sign+HEADER_LEN);
+	memcpy((void *)org_sign, (void *)new_sign, HEADER_LEN);
+	void *src = (void *)(addr+((char *)new_sign)[OFF_BYTE]);
+	void *dst = (void *)(org_sign+HEADER_LEN);
 	memcpy(dst, src, len);
 }
 
-void write_signature(void *addr, const void *sign){
+void write_signature(uintptr_t addr, uchar *sign)
+{
 	if(!addr || !sign) return;
-	uint len = ((unsigned char *)sign)[LEN_BYTE];
-	void *src = (void *)((uint)sign+HEADER_LEN);
-	void *dst = (void *)((uint)addr+((char *)sign)[OFF_BYTE]);
+	size_t len = sign[LEN_BYTE];
+	void *src = (void *)(sign+HEADER_LEN);
+	void *dst = (void *)(addr+((char *)sign)[OFF_BYTE]);
 #ifdef WIN32
 	DWORD old;
-	VirtualProtect(dst, len, PAGE_EXECUTE_READWRITE, &old); // readonly
-	HANDLE h_process = GetCurrentProcess();
-	WriteProcessMemory(h_process, dst, src, len, NULL); // builtin
-	CloseHandle(h_process);
+	VirtualProtect(dst, len, PAGE_EXECUTE_READWRITE, &old);
+	memcpy(dst, src, len);
 	VirtualProtect(dst, len, old, &old);
 #else
-	void *pa_addr = (void *)((uint)dst&pmask);
-	uint size = (uint)dst-(uint)pa_addr+len;
+	void *pa_addr = (void *)((uintptr_t)dst&~(sysconf(_SC_PAGESIZE)-1));
+	size_t size = (uintptr_t)dst-(uintptr_t)pa_addr+len;
 	mlock(pa_addr, size);
 	mprotect(pa_addr, size, PROT_READ|PROT_WRITE|PROT_EXEC);
 	memcpy(dst, src, len);
@@ -145,8 +131,9 @@ void write_signature(void *addr, const void *sign){
 #endif
 }
 
-void free_signature(void *addr, void *&sign){
+void free_signature(uintptr_t addr, uchar *&sign)
+{
 	write_signature(addr, sign);
-	free(sign);
+	free((void *)sign);
 	sign = NULL;
 }

@@ -1,3 +1,6 @@
+#ifndef L4DTOOLZ_H
+#define L4DTOOLZ_H
+
 #include "interface.h"
 #include "eiface.h"
 #include "tier1/tier1.h"
@@ -5,7 +8,7 @@
 #include "signature.h"
 
 #define BINMSIZE	0x1400000 // 20M
-#define CHKPTR(P, V)	(P && !((uint)(P)&V))
+#define CHKPTR(P, V)	(P && !((uintptr_t)(P)&V))
 #define CMPPTR(P, V, C)	(CHKPTR(P, V) && abs((int)P-(int)C)<BINMSIZE)
 #define READCALL(P)	((P+5-1)+*(int *)(P))
 #define CHKVAL \
@@ -14,16 +17,16 @@
 	if(new_value==old_value) return;
 
 #pragma pack(push, 1)
-struct ValidateAuthTicketResponse_t{
+typedef struct {
 	uint64 id;
 	int code;
 	uint64 owner;
-};
+} ValidateAuthTicketResponse_t;
 #pragma pack(pop)
 
 struct netadr_s{
 	int type;
-	unsigned char ip[4];
+	uchar ip[4];
 	unsigned short port;
 };
 
@@ -33,7 +36,7 @@ public:
 	virtual void Unload();
 	virtual void Pause(){ }
 	virtual void UnPause(){ }
-	virtual const char *GetPluginDescription(){ return "L4DToolZ v2.2.5, https://github.com/lakwsh/l4dtoolz"; }
+	virtual const char *GetPluginDescription(){ return "L4DToolZ v2.3.0, https://github.com/lakwsh/l4dtoolz"; }
 	virtual void LevelInit(char const *pMapName){ }
 	virtual void ServerActivate(edict_t *pEdictList, int edictCount, int clientMax);
 	virtual void GameFrame(bool simulating){ }
@@ -55,39 +58,17 @@ public:
 	static void OnAntiSharing(IConVar *var, const char *pOldValue, float flOldValue);
 	static void OnForceUnreserved(IConVar *var, const char *pOldValue, float flOldValue);
 
-#ifdef WIN32
-	static void PostAuth(ValidateAuthTicketResponse_t *);
-#else
-	static void PostAuth(void *, ValidateAuthTicketResponse_t *);
-#endif
-	static void ConnectionStart(uint ***);
+	static void ConnectionStart(uintptr_t **chan);
 private:
-	static uint *slots_ptr;
-	static uint64 *cookie_ptr;
-	static uint *maxcl_ptr;
-	static uint *gamerules_ptr;
-	static void *rules_max_ptr;
-	static void *rules_max_org;
-	static void *dsp_max_ptr;
-	static void *dsp_max_org;
-	static void *lobby_req_ptr;
-	static void *lobby_req_org;
-	static uint *steam3_ptr;
-	static void *authreq_ptr;
-	static void *authreq_org;
-	static uint *authrsp_ptr;
-	static uint authrsp_org;
-	static uint *tickint_ptr;
-	static void *tickint_org;
-	static void *set_rate_ptr;
-	static void *set_rate_org;
 };
 extern l4dtoolz g_l4dtoolz;
 
 class Handler{
 public:
 	virtual	~Handler(){ }
-	virtual void ConnectionStart(uint ***chan){ l4dtoolz::ConnectionStart(chan); }
+	virtual void ConnectionStart(uintptr_t **chan){ l4dtoolz::ConnectionStart(chan); }
 	virtual void ConnectionClosing(const char *){ }
 	virtual void ConnectionCrashed(const char *){ }
 };
+
+#endif // L4DTOOLZ_H
