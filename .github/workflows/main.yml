@@ -6,9 +6,6 @@ on:
       - 'maindef31max'
     paths-ignore:
       - '**.md'
-  pull_request:
-    paths-ignore:
-      - '**.md'
   schedule:
     - cron: '30 03 01 */3 *'
 

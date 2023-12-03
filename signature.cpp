@@ -47,8 +47,8 @@ static int callback(struct dl_phdr_info *info, size_t size, void *data)
 
 bool find_base(mem_info *data)
 {
-	base->addr = NULL;
-	base->len = 0;
+	data->addr = NULL;
+	data->len = 0;
 #ifdef WIN32
 	HANDLE hModuleSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, 0);
 	if(hModuleSnap==INVALID_HANDLE_VALUE) return false;
@@ -81,7 +81,7 @@ uintptr_t find_signature(uchar *mask, mem_info *base, bool pure)
 	while(p<end){
 		uint i = LEN_BYTE+1;
 		for(uchar *tmp = p; i<=len; ++i, ++tmp){
-			if(!pure && mask[i]=='\xC3') continue;
+			if(!pure && mask[i]==0xC3U) continue;
 			if(mask[i]!=*tmp) break;
 		}
 		if(--i==len){

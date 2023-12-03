@@ -24,19 +24,13 @@ typedef struct {
 } ValidateAuthTicketResponse_t;
 #pragma pack(pop)
 
-struct netadr_s{
-	int type;
-	uchar ip[4];
-	unsigned short port;
-};
-
 class l4dtoolz:public IServerPluginCallbacks{
 public:
 	virtual bool Load(CreateInterfaceFn interfaceFactory, CreateInterfaceFn gameServerFactory);
 	virtual void Unload();
 	virtual void Pause(){ }
 	virtual void UnPause(){ }
-	virtual const char *GetPluginDescription(){ return "L4DToolZ v2.3.0, https://github.com/lakwsh/l4dtoolz"; }
+	virtual const char *GetPluginDescription(){ return "L4DToolZ v2.3.1, https://github.com/lakwsh/l4dtoolz"; }
 	virtual void LevelInit(char const *pMapName){ }
 	virtual void ServerActivate(edict_t *pEdictList, int edictCount, int clientMax);
 	virtual void GameFrame(bool simulating){ }
@@ -45,7 +39,7 @@ public:
 	virtual void ClientDisconnect(edict_t *pEntity){ }
 	virtual void ClientPutInServer(edict_t *pEntity, char const *playername){ }
 	virtual void SetCommandClient(int index){ }
-	virtual void ClientSettingsChanged(edict_t *pEdict){ }
+	virtual void ClientSettingsChanged(edict_t *pEdict);
 	virtual PLUGIN_RESULT ClientConnect(bool *bAllowConnect, edict_t *pEntity, const char *pszName, const char *pszAddress, char *reject, int maxrejectlen);
 	virtual PLUGIN_RESULT ClientCommand(edict_t *pEntity, const CCommand &args){ return PLUGIN_CONTINUE; }
 	virtual PLUGIN_RESULT NetworkIDValidated(const char *pszUserName, const char *pszNetworkID){ return PLUGIN_CONTINUE; }
@@ -57,18 +51,7 @@ public:
 	static void OnBypassAuth(IConVar *var, const char *pOldValue, float flOldValue);
 	static void OnAntiSharing(IConVar *var, const char *pOldValue, float flOldValue);
 	static void OnForceUnreserved(IConVar *var, const char *pOldValue, float flOldValue);
-
-	static void ConnectionStart(uintptr_t **chan);
-private:
 };
 extern l4dtoolz g_l4dtoolz;
-
-class Handler{
-public:
-	virtual	~Handler(){ }
-	virtual void ConnectionStart(uintptr_t **chan){ l4dtoolz::ConnectionStart(chan); }
-	virtual void ConnectionClosing(const char *){ }
-	virtual void ConnectionCrashed(const char *){ }
-};
 
 #endif // L4DTOOLZ_H

@@ -10,8 +10,9 @@ EXPOSE_SINGLE_INTERFACE_GLOBALVAR(l4dtoolz, IServerPluginCallbacks, INTERFACEVER
 
 static IVEngineServer *g_engine;
 static ICvar *g_cvar;
-static uint g_tickrate = 30;
+static int g_tickrate = 30;
 
+static edict_t **edict_ptr;
 static int *slots_ptr;
 static uint64 *cookie_ptr;
 static int *maxcl_ptr;
@@ -29,9 +30,6 @@ static uintptr_t *authrsp_ptr;
 static uintptr_t authrsp_org;
 static uintptr_t tickint_ptr;
 static uchar *tickint_org;
-static uintptr_t set_rate_ptr;
-static uchar *set_rate_org;
-static uintptr_t **netchan_ptr;
 
 void l4dtoolz::OnChangeMax(IConVar *var, const char *pOldValue, float flOldValue)
 {
@@ -128,7 +126,7 @@ void l4dtoolz::OnBypassAuth(IConVar *var, const char *pOldValue, float flOldValu
 {
 	CHKVAL
 	if(!steam3_ptr){
-	err_bypass:
+err:
 		var->SetValue(0);
 		Msg("[L4DToolZ] sv_steam_bypass init error\n");
 		return;
@@ -136,7 +134,7 @@ void l4dtoolz::OnBypassAuth(IConVar *var, const char *pOldValue, float flOldValu
 	uchar authreq_new[6] = {0x04, 0x00};
 	if(!authreq_ptr){
 		auto gsv = (uintptr_t **)steam3_ptr[1];
-		if(!CHKPTR(gsv, 0xf)) goto err_bypass;
+		if(!CHKPTR(gsv, 0xf)) goto err;
 		authreq_ptr = (uintptr_t)&gsv[0][authreq_idx];
 		read_signature(authreq_ptr, authreq_new, authreq_org);
 	}
@@ -146,13 +144,24 @@ void l4dtoolz::OnBypassAuth(IConVar *var, const char *pOldValue, float flOldValu
 }
 ConVar sv_steam_bypass("sv_steam_bypass", "0", 0, "Bypass steam validation", true, 0, true, 1, l4dtoolz::OnBypassAuth);
 
+void l4dtoolz::ClientSettingsChanged(edict_t *pEdict) // rate
+{
+	if(g_tickrate==30) return;
+	if(!edict_ptr || !CHKPTR(*edict_ptr, 0x3)){
+		Msg("[L4DToolZ] datarate init error.\n");
+		return;
+	}
+	auto net = (int *)g_engine->GetPlayerNetInfo((int)(pEdict-*edict_ptr));
+	if(net) net[rate_idx] = g_tickrate*1000; // real
+}
+
 PLUGIN_RESULT l4dtoolz::ClientConnect(bool *bAllowConnect, edict_t *pEntity, const char *, const char *, char *, int)
 {
 	if(sv_steam_bypass.GetInt()!=1) return PLUGIN_CONTINUE;
 	const CSteamID *steamID = g_engine->GetClientSteamID(pEntity);
 	if(!steamID){
 		Msg("[L4DToolZ] invalid steamID.\n");
-	reject:
+reject:
 		*bAllowConnect = false;
 		return PLUGIN_STOP;
 	}
@@ -221,21 +230,11 @@ void l4dtoolz::OnForceUnreserved(IConVar *var, const char *pOldValue, float flOl
 }
 ConVar sv_force_unreserved("sv_force_unreserved", "0", 0, "Disallow lobby reservation", true, 0, true, 1, l4dtoolz::OnForceUnreserved);
 
-void l4dtoolz::ConnectionStart(uintptr_t **chan)
-{
-	netchan_ptr = chan;
-	set_rate_ptr = chan[0][setrate_idx];
-	read_signature(set_rate_ptr, set_rate_new, set_rate_org);
-	*(uint *)&set_rate_new[3] = g_tickrate*1000;
-	write_signature(set_rate_ptr, set_rate_new);
-	Msg("[L4DToolZ] tickrate: %d\n", g_tickrate);
-}
-
 bool l4dtoolz::Load(CreateInterfaceFn interfaceFactory, CreateInterfaceFn gameServerFactory)
 {
 	g_engine = (IVEngineServer *)interfaceFactory(INTERFACEVERSION_VENGINESERVER, NULL);
 	g_cvar = (ICvar *)interfaceFactory(CVAR_INTERFACE_VERSION, NULL);
-	g_tickrate = (uint)CommandLine()->ParmValue("-tickrate", 30);
+	g_tickrate = CommandLine()->ParmValue("-tickrate", 30);
 
 	ConnectTier1Libraries(&interfaceFactory, 1);
 	ConVar_Register(0);
@@ -245,13 +244,14 @@ bool l4dtoolz::Load(CreateInterfaceFn interfaceFactory, CreateInterfaceFn gameSe
 		auto gamerules = *(uintptr_t **)(client[0][18]+info_off); // mov
 		if(CMPPTR(gamerules, 0x3, gameServerFactory)) gamerules_ptr = gamerules;
 	}
-	if(!slots_ptr){
-		auto sv = *(uintptr_t ***)(((uint **)(uintptr_t)g_engine)[0][0x80]+sv_off);
-		if(!CMPPTR(sv, 0xf, interfaceFactory)) goto err_sv;
+	if(!edict_ptr){
+		auto sv = *(uintptr_t ***)(((uint **)g_engine)[0][0x80]+sv_off);
+		if(!CMPPTR(sv, 0x7, interfaceFactory)) return false;
+		edict_ptr = (edict_t **)&sv[edict_idx];
 		slots_ptr = (int *)&sv[slots_idx];
 		cookie_ptr = (uint64 *)&sv[cookie_idx];
 		maxcl_ptr = (int *)&sv[maxcl_idx];
-		auto sfunc = (uintptr_t *(*)(void))(uintptr_t)READCALL(sv[0][steam3_idx]+steam3_off);
+		auto sfunc = (uintptr_t *(*)(void))READCALL(sv[0][steam3_idx]+steam3_off);
 		if(CMPPTR(sfunc, 0xf, interfaceFactory)){
 			steam3_ptr = sfunc(); // conn
 			authrsp_ptr = &steam3_ptr[authrsp_idx];
@@ -261,7 +261,6 @@ bool l4dtoolz::Load(CreateInterfaceFn interfaceFactory, CreateInterfaceFn gameSe
 		read_signature(lobby_req_ptr, lobby_req_new, lobby_req_org);
 		*(uintptr_t *)&lobby_req_new[2] = (uintptr_t)&ReplyReservationRequest;
 	}
-err_sv:
 	if(!dsp_max_ptr){
 		auto match = (uintptr_t **)interfaceFactory("MATCHFRAMEWORK_001", NULL);
 		auto title = ((uintptr_t **(*)(void))match[0][8])();
@@ -269,23 +268,16 @@ err_sv:
 		read_signature(dsp_max_ptr, max_player_new, dsp_max_org);
 	}
 
-	if(g_tickrate==30) return true;
-	if(!tickint_ptr){
+	if(g_tickrate!=30 && !tickint_ptr){
 		auto game = (uintptr_t **)gameServerFactory(INTERFACEVERSION_SERVERGAMEDLL, NULL);
 		tickint_ptr = (uintptr_t)&game[0][tickint_idx];
 		uchar tickint_new[6] = {0x04, 0x00};
 		read_signature(tickint_ptr, tickint_new, tickint_org);
 		*(uintptr_t *)&tickint_new[2] = (uintptr_t)&GetTickInterval;
 		write_signature(tickint_ptr, tickint_new);
+		((uint *)g_cvar->FindVar("net_splitpacket_maxrate"))[15] = 0; // m_bHasMax
+		Msg("[L4DToolZ] tickrate: %d\n", g_tickrate);
 	}
-	((uint *)g_cvar->FindVar("net_splitpacket_maxrate"))[15] = 0; // m_bHasMax
-	auto net = (uintptr_t **)interfaceFactory("INETSUPPORT_001", NULL);
-	netadr_s adr = {3, 0, 0};
-#ifdef WIN32
-	((void (__thiscall *)(void *, int, netadr_s *, const char *, Handler *))net[0][12])(net, 99, &adr, "l4dtoolz", new Handler);
-#else
-	((void (*)(void *, int, netadr_s *, const char *, Handler *))net[0][12])(net, 99, &adr, "l4dtoolz", new Handler);
-#endif
 	g_engine->ServerCommand("sv_setmax 31\n");
 	Msg("[L4DToolZ] maxplayers default set to 31\n");
 	return true;
@@ -302,11 +294,4 @@ void l4dtoolz::Unload()
 	free_signature(dsp_max_ptr, dsp_max_org);
 	free_signature(lobby_req_ptr, lobby_req_org);
 	free_signature(tickint_ptr, tickint_org);
-	free_signature(set_rate_ptr, set_rate_org);
-	if(!netchan_ptr) return;
-#ifdef WIN32
-	((void (__thiscall *)(void *, const char *))netchan_ptr[0][shutdown_idx])((void *)netchan_ptr, "");
-#else
-	((void (*)(void *, const char *))netchan_ptr[0][shutdown_idx])((void *)netchan_ptr, "");
-#endif
 }
