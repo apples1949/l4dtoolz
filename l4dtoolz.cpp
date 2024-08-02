@@ -99,7 +99,7 @@ void l4dtoolz::OnSetMaxCl(IConVar *var, const char *pOldValue, float flOldValue)
     *maxcl_ptr = new_value;
     Msg("[L4DToolZ] maxplayers set to %d\n", new_value);
 }
-ConVar sv_setmax("sv_setmax", "31", 0, "Max clients", true, 18, true, 32, l4dtoolz::OnSetMaxCl);
+ConVar sv_setmax("sv_setmax", "18", 0, "Max clients", true, 18, true, 32, l4dtoolz::OnSetMaxCl);
 
 void l4dtoolz::ServerActivate(edict_t *, int, int) {
     int slots = sv_maxplayers.GetInt();
@@ -283,6 +283,7 @@ bool l4dtoolz::Load(CreateInterfaceFn interfaceFactory, CreateInterfaceFn gameSe
         ((uint *)g_cvar->FindVar("net_splitpacket_maxrate"))[15] = 0;  // m_bHasMax
         Msg("[L4DToolZ] tickrate: %d\n", g_tickrate);
     }
+    g_engine->ServerCommand("sv_setmax 31\n");
     return true;
 }
 
